@@ -2,7 +2,7 @@
 import asyncio
 import logging
 import os
-import sys
+import html
 
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
@@ -69,18 +69,42 @@ async def analyze_ticker(message: types.Message):
         chart_buffer = ChartGenerator.generate_chart(df, symbol, "1h", pivots)
         
         # 5. Формируем ответ
-        confidence_emoji = "🟢" if ai_result.get('confidence', 0) >= 7 else "🟡"
-        if ai_result.get('confidence', 0) < 5: confidence_emoji = "🔴"
+        confidence = ai_result.get('confidence', 0)
+        confidence_emoji = "🟢" if confidence >= 7 else "🟡"
+        if confidence < 5: confidence_emoji = "🔴"
         
-        caption = (
-            f"📊 **Анализ {symbol} (1H)**\n"
-            f"Сигнал: **{ai_result.get('signal')}** {confidence_emoji}\n"
-            f"Setup: {ai_result.get('setup_name')}\n"
-            f"Confidence: {ai_result.get('confidence')}/10\n\n"
-            f"🎯 Entry: {ai_result.get('entry_range')}\n"
-            f"🛑 Stop: {ai_result.get('stop_loss')}\n"
-            f"✅ TP: {ai_result.get('take_profit_1')} / {ai_result.get('take_profit_2')}\n\n"
-            f"📝 _Reasoning:_ {ai_result.get('reasoning')}"
+        # Экранирование HTML тегов в тексте от ИИ
+        reasoning_safe = html.escape(str(ai_result.get('reasoning', '')))
+        setup_safe = html.escape(str(ai_result.get('setup_name', '')))
+        
+        # Перевод сигнала на русский
+        raw_signal = str(ai_result.get('signal', '')).upper()
+        signal_ru = raw_signal
+        if "LONG" in raw_signal:
+            signal_ru = "LONG (Покупка) 📈"
+        elif "SHORT" in raw_signal:
+            signal_ru = "SHORT (Продажа) 📉"
+        elif "NEUTRAL" in raw_signal:
+            signal_ru = "NEUTRAL (Ждем) 😐"
+            
+        signal_safe = html.escape(signal_ru)
+        
+        # Краткая подпись для графика (чтобы не превысить лимит 1024 символа)
+        short_caption = (
+            f"📊 <b>Анализ {symbol} (1H)</b>\n"
+            f"Сигнал: <b>{signal_safe}</b> {confidence_emoji}\n"
+            f"Сетап: {setup_safe}\n"
+            f"Уверенность: {confidence}/10\n\n"
+            f"🎯 Вход: {ai_result.get('entry_range')}\n"
+            f"🛑 Стоп: {ai_result.get('stop_loss')}\n"
+            f"✅ Тейк: {ai_result.get('take_profit_1')} / {ai_result.get('take_profit_2')}\n\n"
+            f"👇 <i>Подробное обоснование ниже</i>"
+        )
+        
+        # Полный текст обоснования отдельным сообщением
+        full_text = (
+            f"📝 <b>Подробный анализ {symbol}:</b>\n\n"
+            f"{reasoning_safe}"
         )
         
         # Удаляем сообщение "думаю" и присылаем результат
@@ -88,14 +112,21 @@ async def analyze_ticker(message: types.Message):
         
         if chart_buffer:
             input_file = BufferedInputFile(chart_buffer.read(), filename=f"{symbol}_chart.png")
-            await message.answer_photo(photo=input_file, caption=caption, parse_mode="Markdown")
+            # Отправляем фото с краткими данными
+            await message.answer_photo(photo=input_file, caption=short_caption, parse_mode="HTML")
+            # Отправляем подробности следом
+            await message.answer(full_text, parse_mode="HTML")
         else:
-            await message.answer(caption, parse_mode="Markdown")
+            await message.answer(short_caption + "\n\n" + full_text, parse_mode="HTML")
 
     except Exception as e:
         logger.error(f"Error in handler: {e}", exc_info=True)
-        await status_msg.edit_text(f"⚠️ Произошла ошибка: {str(e)}")
-
+        # Если status_msg уже удален, edit_text вызовет ошибку. Лучше отправить новое сообщение.
+        try:
+            await message.answer(f"⚠️ Произошла ошибка: {str(e)}")
+        except:
+            # Если совсем все плохо (например бота заблочили), просто логируем
+            logger.error("Failed to send error message to user")
 async def main():
     print("🤖 Бот запущен!")
     await dp.start_polling(bot)
