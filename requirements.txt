@@ -1,0 +1,9 @@
+hyperliquid-python-sdk
+eth-account
+python-dotenv
+aiogram
+google-generativeai
+pandas
+mplfinance
+aiosqlite
+matplotlib
