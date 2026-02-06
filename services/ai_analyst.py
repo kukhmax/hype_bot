@@ -75,41 +75,43 @@ class AIService:
         pivots_json = json.dumps(pivots[-5:], default=default) if pivots else "None"
         
         prompt = f"""
-        You are an expert Crypto Trader algorithm specializing in Elliott Wave Theory and Wyckoff Analysis.
+        Ты эксперт-трейдер, специализирующийся на Волновой теории Эллиота, методе Вайкоффа и Фибоначчи.
         
-        Task: Analyze the provided OHLCV data for {symbol} (1H timeframe) and decide if there is a high-probability trade setup.
+        Задача: Проанализируй предоставленные OHLCV данные для {symbol} (1H таймфрейм) и определи, есть ли высоковероятный торговый сетап.
         
-        Data Context:
+        Контекст рынка:
         {market_summary}
         
-        Recent Candles (Last 40):
+        Последние свечи (Last 40):
         {csv_data}
         
-        Identified ZigZag Pivots (Local Extrema):
+        Пивоты ZigZag (Локальные экстремумы):
         {pivots_json}
         
-        Analysis Rules:
-        1. **Elliott Wave**: Identify if we are in an Impulse (1,3,5) or Correction (A,B,C). Prefer trades in direction of Wave 3 or 5.
-        2. **Wyckoff**: Look for Spring/Upthrust tests near Support/Resistance.
-        3. **Indicators**: Use RSI divergence as confirmation.
+        Правила анализа:
+        1. **Волны Эллиота**: Определи текущую структуру. Импульс (1,3,5) или Коррекция (A,B,C). Мы ищем вход в начале 3-й или 5-й волны.
+        2. **Вайкофф**: Ищи фазы накопления/распределения. Есть ли Spring (пружина) или Upthrust (вынос)? Тест уровней.
+        3. **Фибоначчи и Уровни**: Используй уровни Фибоначчи для определения целей (TP) зоны входа.
+        4. **Индикаторы**: RSI дивергенция как подтверждение.
         
-        Output Requirements:
-        Return ONLY valid JSON with this structure:
+        Требования к ответу:
+        Верни СТРОГО валидный JSON следующей структуры (ключи на английском, значения reason на РУССКОМ):
         {{
             "signal": "LONG" | "SHORT" | "NEUTRAL",
             "confidence": <int 1-10>,
-            "setup_name": "<string, e.g. Wave 3 Breakout>",
+            "setup_name": "<string, например: Пробой 3-й волны>",
             "entry_range": [<float min>, <float max>],
             "stop_loss": <float price>,
             "take_profit_1": <float price>,
             "take_profit_2": <float price>,
-            "reasoning": "<concise explanation, max 2 sentences>"
+            "reasoning": "<ПОДРОБНОЕ объяснение на РУССКОМ языке. Опиши какая сейчас волна Эллиота, что происходит по Вайкоффу (фаза, тесты), есть ли дивергенция RSI. Объясни, почему выбраны именно такие уровни Stop Loss и Take Profit (уровни Фибо, хай/лоу свинга).>"
         }}
         
-        Important:
-        - If confidence is < 7, set signal to "NEUTRAL".
-        - Stop Loss must be logical (under swing low for Long).
-        - RR (Risk:Reward) must be at least 1:2.
+        Важно:
+        - Если уверенность < 7, signal = "NEUTRAL".
+        - Stop Loss должен быть логичным (за лоу свинга для лонга).
+        - Risk:Reward (RR) минимум 1:2.
+        - Ответ "reasoning" должен быть детальным, чтобы пользователь понимал логику входа.
         """
         
         try:
