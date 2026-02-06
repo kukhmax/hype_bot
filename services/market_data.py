@@ -28,8 +28,19 @@ class MarketDataService:
         """
         print(f"🔄 Загружаю {limit} свечей для {symbol} ({interval})...")
         try:
+            import time
+            end_time = int(time.time() * 1000)
+            # Приблизительный расчет времени старта (с запасом)
+            # 1h = 3600*1000, 4h = ...
+            # Для простоты берем интервал в миллисекундах
+            interval_ms = 3600 * 1000 # default 1h
+            if interval == "15m": interval_ms = 15 * 60 * 1000
+            elif interval == "4h": interval_ms = 4 * 3600 * 1000
+            
+            start_time = end_time - (limit * interval_ms)
+            
             # Получаем снапшот свечей через SDK
-            raw_candles = self.info.candles_snapshot(symbol, interval)
+            raw_candles = self.info.candles_snapshot(symbol, interval, start_time, end_time)
             
             if not raw_candles:
                 print(f"⚠️ Нет данных для {symbol}")

@@ -3,6 +3,7 @@ import os
 import json
 import logging
 import pandas as pd
+import numpy as np
 import google.generativeai as genai
 from dotenv import load_dotenv
 
@@ -64,6 +65,15 @@ class AIService:
         csv_data = df.tail(40).to_csv(index=False)
         
         # 2. Сборка системного промпта
+        # Helper to convert numpy types to python types for JSON serialization
+        def default(o):
+            if isinstance(o, (np.int64, np.int32)): return int(o)
+            if isinstance(o, (np.float64, np.float32)): return float(o)
+            raise TypeError
+
+        # Identified ZigZag Pivots (Local Extrema)
+        pivots_json = json.dumps(pivots[-5:], default=default) if pivots else "None"
+        
         prompt = f"""
         You are an expert Crypto Trader algorithm specializing in Elliott Wave Theory and Wyckoff Analysis.
         
@@ -76,7 +86,7 @@ class AIService:
         {csv_data}
         
         Identified ZigZag Pivots (Local Extrema):
-        {json.dumps(pivots[-5:]) if pivots else "None"}
+        {pivots_json}
         
         Analysis Rules:
         1. **Elliott Wave**: Identify if we are in an Impulse (1,3,5) or Correction (A,B,C). Prefer trades in direction of Wave 3 or 5.
