@@ -43,7 +43,7 @@ class AIService:
                     "response_mime_type": "application/json"
                 }
             )
-            logger.info("🤖 Инициализирован Gemini 1.5 Pro")
+            logger.info("🤖 Инициализирован Gemini 2.5 Pro")
         else:
             api_key = os.getenv("DEEPSEEK_API_KEY")
             if not api_key:

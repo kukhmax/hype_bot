@@ -58,15 +58,17 @@ async def analyze_ticker(message: types.Message):
 
         # 2. Считаем индикаторы
         df, pivots = IndicatorEngine.add_all_indicators(df)
+
+        ai = "Gemini" if os.getenv("IS_GEMINI") else "DeepSeek"
         
-        await bot.edit_message_text(f"🧠 Gemini анализирует структуру рынка для {symbol}...", chat_id=message.chat.id, message_id=status_msg.message_id)
+        await bot.edit_message_text(f"🧠 {ai} анализирует структуру рынка для {symbol}...", chat_id=message.chat.id, message_id=status_msg.message_id)
 
         # 3. Спрашиваем ИИ
         # Передаем копию, чтобы не сломать логику если меняется df
         ai_result = await ai_service.analyze_market(symbol, df, pivots)
         
         # 4. Генерируем график
-        chart_buffer = ChartGenerator.generate_chart(df, symbol, "1h", pivots)
+        chart_buffer = ChartGenerator.generate_chart(df, symbol, "5m", pivots)
         
         # 5. Формируем ответ
         confidence = ai_result.get('confidence', 0)
@@ -81,11 +83,11 @@ async def analyze_ticker(message: types.Message):
         raw_signal = str(ai_result.get('signal', '')).upper()
         signal_ru = raw_signal
         if "LONG" in raw_signal:
-            signal_ru = "LONG (Покупка) 📈"
+            signal_ru = "LONG (Покупка) 🟢📈🟢  "
         elif "SHORT" in raw_signal:
-            signal_ru = "SHORT (Продажа) 📉"
+            signal_ru = "SHORT (Продажа) 🔴📉🔴  "
         elif "NEUTRAL" in raw_signal:
-            signal_ru = "NEUTRAL (Ждем) 😐"
+            signal_ru = "NEUTRAL (Ждем) 😐  "
             
         signal_safe = html.escape(signal_ru)
         

@@ -17,7 +17,7 @@ class MarketDataService:
         # skip_ws=True отключает WebSocket, используем только HTTP для запросов
         self.info = Info(base_url=base_url, skip_ws=True)
 
-    def get_candles(self, symbol: str, interval: str = "1h", limit: int = 100) -> pd.DataFrame:
+    def get_candles(self, symbol: str, interval: str = "5m", limit: int = 100) -> pd.DataFrame:
         """
         Получает исторические свечи (OHLCV) для указанной пары.
 
