@@ -63,7 +63,7 @@ async def analyze_ticker(message: types.Message):
 
         # 3. Спрашиваем ИИ
         # Передаем копию, чтобы не сломать логику если меняется df
-        ai_result = ai_service.analyze_market(symbol, df, pivots)
+        ai_result = await ai_service.analyze_market(symbol, df, pivots)
         
         # 4. Генерируем график
         chart_buffer = ChartGenerator.generate_chart(df, symbol, "1h", pivots)
