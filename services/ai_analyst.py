@@ -6,6 +6,7 @@ import pandas as pd
 import numpy as np
 import google.generativeai as genai
 from dotenv import load_dotenv
+from openai import AsyncOpenAI
 
 # Загружаем переменные окружения
 load_dotenv()
@@ -16,43 +17,52 @@ logger = logging.getLogger(__name__)
 
 class AIService:
     """
-    Сервис для взаимодействия с Gemini 1.5 Pro.
+    Сервис для взаимодействия с AI (Gemini или DeepSeek).
     Отвечает за отправку рыночных данных и получение торгового сигнала в JSON.
     """
     
     def __init__(self):
         """
-        Инициализация клиента Gemini.
-        Ключ берется из переменной окружения GEMINI_API_KEY.
+        Инициализация клиента AI.
+        Выбор провайдера зависит от IS_GEMINI в .env.
         """
-        api_key = os.getenv("GEMINI_API_KEY")
-        if not api_key:
-            logger.error("❌ GEMINI_API_KEY не найден в .env")
-            raise ValueError("GEMINI_API_KEY is missing")
-            
-        genai.configure(api_key=api_key)
+        self.is_gemini = os.getenv("IS_GEMINI", "True").lower() == "true"
         
-        # Конфигурация модели
-        self.model = genai.GenerativeModel(
-            model_name="gemini-2.5-pro",
-            generation_config={
-                "temperature": 0.2, # Низкая температура для более детерминированных ответов (JSON)
-                "response_mime_type": "application/json" # Принудительный JSON режим
-            }
-        )
+        if self.is_gemini:
+            api_key = os.getenv("GEMINI_API_KEY")
+            if not api_key:
+                logger.error("❌ GEMINI_API_KEY не найден в .env")
+                raise ValueError("GEMINI_API_KEY is missing")
+                
+            genai.configure(api_key=api_key)
+            # Конфигурация модели Gemini
+            self.gemini_model = genai.GenerativeModel(
+                model_name="gemini-2.5-pro",
+                generation_config={
+                    "temperature": 0.2,
+                    "response_mime_type": "application/json"
+                }
+            )
+            logger.info("🤖 Инициализирован Gemini 1.5 Pro")
+        else:
+            api_key = os.getenv("DEEPSEEK_API_KEY")
+            if not api_key:
+                logger.error("❌ DEEPSEEK_API_KEY не найден в .env")
+                raise ValueError("DEEPSEEK_API_KEY is missing")
+            
+            # DeepSeek совместим с OpenAI API
+            self.deepseek_client = AsyncOpenAI(
+                api_key=api_key,
+                base_url="https://api.deepseek.com"
+            )
+            logger.info("🤖 Инициализирован DeepSeek API")
 
-    def analyze_market(self, symbol: str, df: pd.DataFrame, pivots: list) -> dict:
+    async def analyze_market(self, symbol: str, df: pd.DataFrame, pivots: list) -> dict:
         """
         Анализирует рынок на основе DataFrame свечей и пивотов.
-        
-        :param symbol: Тикер (ETH)
-        :param df: DataFrame с индикаторами (RSI, и т.д.)
-        :param pivots: Список точек ZigZag
-        :return: Словарь с торговым сигналом (парсится из JSON ответа)
         """
         
         # 1. Подготовка данных в текстовом виде для промпта
-        # Берем последние 30 свечей для детального контекста, но summary по 100
         last_candle = df.iloc[-1]
         market_summary = f"""
         Current Price: {last_candle['close']}
@@ -64,7 +74,6 @@ class AIService:
         # Формируем CSV строку последних 40 свечей для модели
         csv_data = df.tail(40).to_csv(index=False)
         
-        # 2. Сборка системного промпта
         # Helper to convert numpy types to python types for JSON serialization
         def default(o):
             if isinstance(o, (np.int64, np.int32)): return int(o)
@@ -74,19 +83,10 @@ class AIService:
         # Identified ZigZag Pivots (Local Extrema)
         pivots_json = json.dumps(pivots[-5:], default=default) if pivots else "None"
         
-        prompt = f"""
+        system_prompt = f"""
         Ты эксперт-трейдер, специализирующийся на Волновой теории Эллиота, методе Вайкоффа и Фибоначчи.
         
         Задача: Проанализируй предоставленные OHLCV данные для {symbol} (1H таймфрейм) и определи, есть ли высоковероятный торговый сетап.
-        
-        Контекст рынка:
-        {market_summary}
-        
-        Последние свечи (Last 40):
-        {csv_data}
-        
-        Пивоты ZigZag (Локальные экстремумы):
-        {pivots_json}
         
         Правила анализа:
         1. **Волны Эллиота**: Определи текущую структуру. Импульс (1,3,5) или Коррекция (A,B,C). Мы ищем вход в начале 3-й или 5-й волны.
@@ -113,21 +113,48 @@ class AIService:
         - Risk:Reward (RR) минимум 1:2.
         - Ответ "reasoning" должен быть детальным, чтобы пользователь понимал логику входа.
         """
+
+        user_content = f"""
+        Контекст рынка:
+        {market_summary}
+        
+        Последние свечи (Last 40):
+        {csv_data}
+        
+        Пивоты ZigZag (Локальные экстремумы):
+        {pivots_json}
+        """
         
         try:
-            logger.info(f"🧠 Отправка данных в Gemini для {symbol}...")
-            response = self.model.generate_content(prompt)
+            logger.info(f"🧠 Отправка данных в {'Gemini' if self.is_gemini else 'DeepSeek'} для {symbol}...")
+            
+            if self.is_gemini:
+                # Gemini требует полный промпт в одном вызове (или chat history, но тут one-shot)
+                full_gemini_prompt = system_prompt + "\n\n" + user_content
+                response = self.gemini_model.generate_content(full_gemini_prompt)
+                response_text = response.text
+            else:
+                # DeepSeek (OpenAI) использует messages
+                response = await self.deepseek_client.chat.completions.create(
+                    model="deepseek-chat",
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_content}
+                    ],
+                    response_format={"type": "json_object"},
+                    temperature=0.2
+                )
+                response_text = response.choices[0].message.content
             
             # Парсинг ответа
-            result = json.loads(response.text)
+            result = json.loads(response_text)
             logger.info(f"✅ Анализ завершен. Сигнал: {result.get('signal')} (Conf: {result.get('confidence')})")
             return result
             
         except Exception as e:
             logger.error(f"❌ Ошибка при запросе к AI: {e}")
             # Возвращаем безопасный нейтральный сигнал при ошибке
-            return {"signal": "NEUTRAL", "confidence": 0, "reasoning": "AI Error"}
+            return {"signal": "NEUTRAL", "confidence": 0, "reasoning": "AI Error: " + str(e)}
 
 if __name__ == "__main__":
-    # Простой тест (можно запустить файл напрямую)
     print("Test run requires API Key and Data.")
