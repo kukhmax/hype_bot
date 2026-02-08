@@ -14,6 +14,7 @@ from services.indicators import IndicatorEngine
 from services.ai_analyst import AIService
 from services.charts import ChartGenerator
 from services.trading import TradingService # Пока не используем для исполнения, но инициализируем
+from services.setup_finder import SetupFinder
 
 # Загрузка конфига
 load_dotenv()
@@ -33,11 +34,15 @@ dp = Dispatcher()
 
 market_data = MarketDataService()
 ai_service = AIService()
+setup_finder = SetupFinder() # Новый сервис поиска сетапов
 # trading_service = TradingService() # Раскомментируем когда настроим ключи
+
+BROADCAST_CHAT_IDS = set() # Store chat IDs to notify
 
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message):
     """Обработчик команды /start"""
+    BROADCAST_CHAT_IDS.add(message.chat.id)
     await message.answer(
         "👋 Привет! Я HypeBot.\n"
         "Отправь мне тикер (например, `ETH` или `BTC`), чтобы получить AI-анализ "
@@ -131,8 +136,51 @@ async def analyze_ticker(message: types.Message):
         except:
             # Если совсем все плохо (например бота заблочили), просто логируем
             logger.error("Failed to send error message to user")
+async def scan_market():
+    """Фоновая задача для сканирования рынка на наличие сетапов."""
+    TARGET_SYMBOLS = ["ETH", "BTC", "LTC", "SOL"]
+    print("🚀 Запущен сканер рынка...")
+    
+    while True:
+        for symbol in TARGET_SYMBOLS:
+            try:
+                # Получаем свечи 5m
+                df = market_data.get_candles(symbol, interval="5m", limit=300)
+                if df.empty:
+                    continue
+                    
+                # Ищем сетап
+                setup = setup_finder.find_setup(df)
+                
+                if setup:
+                    # Формируем сообщение
+                    msg = (
+                        f"🚨 <b>СИГНАЛ {symbol}</b> 🚨\n"
+                        f"Тип: <b>{setup['signal_type']}</b>\n"
+                        f"Сетап: {setup['setup']}\n"
+                        f"Цена: {setup['price']}\n"
+                        f"🛑 SL: {setup['stop_loss']:.2f}\n"
+                        f"✅ TP: {setup['take_profit']:.2f}\n"
+                        f"⏰ Время: {setup['time']}"
+                    )
+                    
+                    # Отправляем всем известным пользователям
+                    for chat_id in BROADCAST_CHAT_IDS:
+                        try:
+                            await bot.send_message(chat_id, msg, parse_mode="HTML")
+                        except Exception as e:
+                            logger.error(f"Не удалось отправить сигнал пользователю {chat_id}: {e}")
+                            
+            except Exception as e:
+                logger.error(f"Ошибка при сканировании {symbol}: {e}")
+                
+        await asyncio.sleep(60) # Пауза 60 секунд между циклами сканирования
+
 async def main():
     print("🤖 Бот запущен!")
+    # Запускаем фоновую задачу
+    asyncio.create_task(scan_market())
+    
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
