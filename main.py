@@ -151,13 +151,13 @@ async def scan_market():
                     continue
                     
                 # Ищем сетап
-                setup = setup_finder.find_setup(df)
+                setup, valid_df = setup_finder.find_setup(df)
                 
                 if setup:
                     logger.info(f"🔎 Найден потенциальный сетап на {symbol} ({setup['signal_type']}). Валидация AI...")
                     
-                    # Валидация через Gemini/DeepSeek
-                    validation = await ai_service.analyze_setup(symbol, "5m", setup, df)
+                    # Валидация через Gemini/DeepSeek (передаем валидный DF с индикаторами)
+                    validation = await ai_service.analyze_setup(symbol, "5m", setup, valid_df)
                     
                     if validation.get("is_confirmed"):
                         # Формируем сообщение
@@ -179,7 +179,22 @@ async def scan_market():
                             except Exception as e:
                                 logger.error(f"Не удалось отправить сигнал пользователю {chat_id}: {e}")
                     else:
-                        logger.info(f"⛔ AI отклонил сетап на {symbol}: {validation.get('comment')}")
+                        reason = validation.get('comment')
+                        logger.info(f"⛔ AI отклонил сетап на {symbol}: {reason}")
+                        
+                        # Отправляем уведомление об отмене сигнала
+                        msg_rejected = (
+                            f"⛔ <b>AI ОТКЛОНИЛ СЕТАП {symbol}</b>\n"
+                            f"Тип: {setup['signal_type']}\n"
+                            f"Причина: <i>{reason}</i>\n"
+                            f"Уверенность: {validation.get('confidence')}/10"
+                        )
+                        
+                        for chat_id in BROADCAST_CHAT_IDS:
+                            try:
+                                await bot.send_message(chat_id, msg_rejected, parse_mode="HTML")
+                            except Exception as e:
+                                logger.error(f"Не удалось отправить отказ пользователю {chat_id}: {e}")
                             
             except Exception as e:
                 logger.error(f"Ошибка при сканировании {symbol}: {e}")

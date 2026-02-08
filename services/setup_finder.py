@@ -40,14 +40,13 @@ class SetupFinder:
         
         return df
 
-    def find_setup(self, df: pd.DataFrame) -> dict | None:
+    def find_setup(self, df: pd.DataFrame) -> tuple[dict | None, pd.DataFrame]:
         """
         Ищет сетап на последних свечах.
-        Анализируем закрытую свечу (iloc[-2]) как сигнальную.
-        Но для патернов "разворот RSI" нужно смотреть историю (iloc[-3], iloc[-4]).
+        Возвращает (сетап, dataframe_с_индикаторами).
         """
         if df.empty or len(df) < 50:
-            return None
+            return None, df
             
         df = self.calculate_indicators(df)
         
@@ -92,7 +91,7 @@ class SetupFinder:
                 'time': curr['datetime'],
                 'stop_loss': min(curr['ema21'], curr['vwap']) * 0.998,
                 'take_profit': curr['close'] + (curr['close'] - min(curr['ema21'], curr['vwap'])) * 2
-            }
+            }, df
 
         # --- ЛОГИКА SHORT ---
         # 1. Цена ниже VWAP
@@ -120,6 +119,6 @@ class SetupFinder:
                 'time': curr['datetime'],
                 'stop_loss': max(curr['ema21'], curr['vwap']) * 1.002,
                 'take_profit': curr['close'] - (max(curr['ema21'], curr['vwap']) - curr['close']) * 2
-            }
+            }, df
             
-        return None
+        return None, df
