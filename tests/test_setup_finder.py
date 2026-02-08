@@ -12,8 +12,8 @@ from services.setup_finder import SetupFinder
 class TestSetupFinder(unittest.TestCase):
     def setUp(self):
         self.finder = SetupFinder()
-        # Генерируем 100 свечей
-        dates = pd.date_range(start='2024-01-01', periods=100, freq='5min')
+        # Генерируем 1000 свечей (несколько дней) для проверки Anchored VWAP
+        dates = pd.date_range(start='2024-01-01', periods=1000, freq='5min')
         self.df = pd.DataFrame({
             'timestamp': dates,
             'open': 100.0,
@@ -44,9 +44,9 @@ class TestSetupFinder(unittest.TestCase):
         # Модифицируем последние строки для имитации сетапа
         # Нам нужны iloc[-2] (сигнальная), iloc[-3] (предыдущая) и история для EMA/VWAP
         
-        # Индексы
-        curr_idx = 98 # iloc[-2]
-        prev_idx = 97 # iloc[-3]
+        # Индексы (последние)
+        curr_idx = 998 # iloc[-2]
+        prev_idx = 997 # iloc[-3]
         
         # Настраиваем EMA и VWAP "вручную" в DataFrame, 
         # НО find_setup пересчитывает индикаторы!
@@ -87,7 +87,7 @@ class TestSetupFinder(unittest.TestCase):
         df_mock.loc[curr_idx, 'low'] = 101.05 # Почти 101 (ema21) -> разница < 0.3%
         
         # Проверяем
-        result = mock_finder.find_setup(df_mock)
+        result, _ = mock_finder.find_setup(df_mock)
         
         self.assertIsNotNone(result)
         self.assertEqual(result['signal_type'], 'LONG 🟢')
@@ -101,8 +101,8 @@ class TestSetupFinder(unittest.TestCase):
         mock_finder = MockSetupFinder()
         df_mock = self.df.copy()
         
-        curr_idx = 98
-        prev_idx = 97
+        curr_idx = 998
+        prev_idx = 997
         
         # Тренд вниз
         df_mock['vwap'] = 100
@@ -122,7 +122,7 @@ class TestSetupFinder(unittest.TestCase):
         # Касание сопротивления
         df_mock.loc[curr_idx, 'high'] = 98.9 # Почти 99 (ema21)
         
-        result = mock_finder.find_setup(df_mock)
+        result, _ = mock_finder.find_setup(df_mock)
         
         self.assertIsNotNone(result)
         self.assertEqual(result['signal_type'], 'SHORT 🔴')

@@ -34,7 +34,8 @@ class MarketDataService:
             # 1h = 3600*1000, 4h = ...
             # Для простоты берем интервал в миллисекундах
             interval_ms = 3600 * 1000 # default 1h
-            if interval == "15m": interval_ms = 15 * 60 * 1000
+            if interval == "5m": interval_ms = 5 * 60 * 1000
+            elif interval == "15m": interval_ms = 15 * 60 * 1000
             elif interval == "4h": interval_ms = 4 * 3600 * 1000
             
             start_time = end_time - (limit * interval_ms)

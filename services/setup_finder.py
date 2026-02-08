@@ -30,12 +30,17 @@ class SetupFinder:
         df['rsi'] = 100 - (100 / (1 + rs))
         df['rsi'] = df['rsi'].fillna(50)
         
-        # 3. VWAP
-        # Интрадей расчет (от начала загруженных данных)
+        # 3. VWAP (Anchored to Day Start - Session VWAP)
         df['tp'] = (df['high'] + df['low'] + df['close']) / 3
         df['pv'] = df['tp'] * df['volume']
-        df['cum_pv'] = df['pv'].cumsum()
-        df['cum_vol'] = df['volume'].cumsum()
+        
+        # Группировка по дате для сброса VWAP в начале каждого дня (Anchored VWAP)
+        # Это решает проблему "100 свечей мало" - мы берем 1000 свечей в main.py,
+        # и VWAP считается честно от 00:00 UTC
+        grouped = df.groupby(df['datetime'].dt.date)
+        df['cum_pv'] = grouped['pv'].cumsum()
+        df['cum_vol'] = grouped['volume'].cumsum()
+        
         df['vwap'] = df['cum_pv'] / df['cum_vol']
         
         return df

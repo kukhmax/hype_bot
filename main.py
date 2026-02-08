@@ -145,8 +145,8 @@ async def scan_market():
     while True:
         for symbol in TARGET_SYMBOLS:
             try:
-                # Получаем свечи 5m (достаточно для анализа)
-                df = market_data.get_candles(symbol, interval="5m", limit=100)
+                # Получаем свечи 5m (1000 штук ~ 3.5 дня, чтобы точно захватить начало сессии для VWAP)
+                df = market_data.get_candles(symbol, interval="5m", limit=1000)
                 if df.empty:
                     continue
                     
