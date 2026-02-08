@@ -18,6 +18,10 @@ from services.trading import TradingService # Пока не используем
 # Загрузка конфига
 load_dotenv()
 TOKEN = os.getenv("TG_TOKEN")
+AI_ = os.getenv("IS_GEMINI")
+AI = "Gemini" if AI_=="True" else "DeepSeek"
+
+print(AI)
 
 # Логгирование
 logging.basicConfig(level=logging.INFO)
@@ -59,9 +63,7 @@ async def analyze_ticker(message: types.Message):
         # 2. Считаем индикаторы
         df, pivots = IndicatorEngine.add_all_indicators(df)
 
-        ai = "Gemini" if os.getenv("IS_GEMINI") else "DeepSeek"
-        
-        await bot.edit_message_text(f"🧠 {ai} анализирует структуру рынка для {symbol}...", chat_id=message.chat.id, message_id=status_msg.message_id)
+        await bot.edit_message_text(f"🧠 {AI} анализирует структуру рынка для {symbol}...", chat_id=message.chat.id, message_id=status_msg.message_id)
 
         # 3. Спрашиваем ИИ
         # Передаем копию, чтобы не сломать логику если меняется df
@@ -94,9 +96,9 @@ async def analyze_ticker(message: types.Message):
         # Краткая подпись для графика (чтобы не превысить лимит 1024 символа)
         short_caption = (
             f"📊 <b>Анализ {symbol} (1H)</b>\n"
-            f"Сигнал: <b>{signal_safe}</b> {confidence_emoji}\n"
+            f"Сигнал: <b>{signal_safe}</b>\n"
             f"Сетап: {setup_safe}\n"
-            f"Уверенность: {confidence}/10\n\n"
+            f"Уверенность: {confidence}/10 {confidence_emoji}\n\n"
             f"🎯 Вход: {ai_result.get('entry_range')}\n"
             f"🛑 Стоп: {ai_result.get('stop_loss')}\n"
             f"✅ Тейк: {ai_result.get('take_profit_1')} / {ai_result.get('take_profit_2')}\n\n"
