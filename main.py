@@ -44,10 +44,11 @@ async def cmd_start(message: types.Message):
     """Обработчик команды /start"""
     BROADCAST_CHAT_IDS.add(message.chat.id)
     await message.answer(
-        "👋 Привет! Я HypeBot.\n"
-        "Отправь мне тикер (например, `ETH` или `BTC`), чтобы получить AI-анализ "
-        "волн Эллиотта и Вайкоффа на Hyperliquid."
-    )
+        "👋 Привет! Я HypeBot.\n\n"
+        "Я работаю в двух режимах:\n"
+        "1. <b>Авто-сканер</b>: Я слежу за ETH, BTC, LTC, SOL и пришлю уведомление, если найду точку входа (VWAP + EMA + RSI).\n"
+        "2. <b>AI-аналитик</b>: Отправь мне тикер (например, `ETH` или `BTC`), чтобы получить детальный анализ волн Эллиотта и Вайкоффа."
+    , parse_mode="HTML")
 
 @dp.message(F.text)
 async def analyze_ticker(message: types.Message):
@@ -144,8 +145,8 @@ async def scan_market():
     while True:
         for symbol in TARGET_SYMBOLS:
             try:
-                # Получаем свечи 5m
-                df = market_data.get_candles(symbol, interval="5m", limit=300)
+                # Получаем свечи 5m (достаточно для анализа)
+                df = market_data.get_candles(symbol, interval="5m", limit=100)
                 if df.empty:
                     continue
                     
@@ -153,28 +154,37 @@ async def scan_market():
                 setup = setup_finder.find_setup(df)
                 
                 if setup:
-                    # Формируем сообщение
-                    msg = (
-                        f"🚨 <b>СИГНАЛ {symbol}</b> 🚨\n"
-                        f"Тип: <b>{setup['signal_type']}</b>\n"
-                        f"Сетап: {setup['setup']}\n"
-                        f"Цена: {setup['price']}\n"
-                        f"🛑 SL: {setup['stop_loss']:.2f}\n"
-                        f"✅ TP: {setup['take_profit']:.2f}\n"
-                        f"⏰ Время: {setup['time']}"
-                    )
+                    logger.info(f"🔎 Найден потенциальный сетап на {symbol} ({setup['signal_type']}). Валидация AI...")
                     
-                    # Отправляем всем известным пользователям
-                    for chat_id in BROADCAST_CHAT_IDS:
-                        try:
-                            await bot.send_message(chat_id, msg, parse_mode="HTML")
-                        except Exception as e:
-                            logger.error(f"Не удалось отправить сигнал пользователю {chat_id}: {e}")
+                    # Валидация через Gemini/DeepSeek
+                    validation = await ai_service.analyze_setup(symbol, "5m", setup, df)
+                    
+                    if validation.get("is_confirmed"):
+                        # Формируем сообщение
+                        msg = (
+                            f"🚨 <b>СИГНАЛ {symbol} (Подтверждено AI)</b>\n"
+                            f"Тип: <b>{setup['signal_type']}</b>\n"
+                            f"Сетап: {setup['setup']}\n"
+                            f"Цена: {setup['price']}\n"
+                            f"🛑 SL: {setup['stop_loss']:.2f}\n"
+                            f"✅ TP: {setup['take_profit']:.2f}\n"
+                            f"🤖 AI Мнение: <i>{validation.get('comment')}</i> (Conf: {validation.get('confidence')}/10)\n"
+                            f"⏰ Время: {setup['time']}"
+                        )
+                        
+                        # Отправляем всем известным пользователям
+                        for chat_id in BROADCAST_CHAT_IDS:
+                            try:
+                                await bot.send_message(chat_id, msg, parse_mode="HTML")
+                            except Exception as e:
+                                logger.error(f"Не удалось отправить сигнал пользователю {chat_id}: {e}")
+                    else:
+                        logger.info(f"⛔ AI отклонил сетап на {symbol}: {validation.get('comment')}")
                             
             except Exception as e:
                 logger.error(f"Ошибка при сканировании {symbol}: {e}")
                 
-        await asyncio.sleep(60) # Пауза 60 секунд между циклами сканирования
+        await asyncio.sleep(20) # Пауза 20 секунд (почти реалтайм)
 
 async def main():
     print("🤖 Бот запущен!")

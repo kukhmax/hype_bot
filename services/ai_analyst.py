@@ -156,5 +156,62 @@ class AIService:
             # Возвращаем безопасный нейтральный сигнал при ошибке
             return {"signal": "NEUTRAL", "confidence": 0, "reasoning": "AI Error: " + str(e)}
 
+    async def analyze_setup(self, symbol: str, timeframe: str, setup_info: dict, df: pd.DataFrame) -> dict:
+        """
+        Валидирует технический сетап.
+        """
+        last_candle = df.iloc[-1]
+        market_summary = f"""
+        Price: {last_candle['close']}
+        RSI: {last_candle['rsi']:.2f}
+        VWAP: {last_candle['vwap']:.2f}
+        EMA9: {last_candle['ema9']:.2f}
+        EMA21: {last_candle['ema21']:.2f}
+        """
+        
+        system_prompt = f"""
+        Ты опытный крипто-трейдер. Твоя задача — подтвердить или отклонить технический сетап от алгоритма.
+        
+        Алгоритм нашел сетап: {setup_info.get('setup')} 
+        Тип: {setup_info.get('signal_type')}
+        Цена входа: {setup_info.get('price')}
+        
+        Посмотри на последние 30 свечей (CSV) и ответь честно:
+        1. Видишь ли ты сильные уровни поддержки/сопротивления прямо перед входом? (Если да — опасно).
+        2. Есть ли противоречия (например, сильный даунтренд на старшем ТФ, хотя сигнал в лонг)?
+        3. Согласен ли ты с сигнал?
+        
+        Верни JSON:
+        {{
+            "is_confirmed": true/false,
+            "confidence": <int 1-10>,
+            "comment": "<Краткое мнение на РУССКОМ>"
+        }}
+        """
+        
+        csv_data = df.tail(30).to_csv(index=False)
+        user_content = f"Market Context:\n{market_summary}\n\nLast 30 candles:\n{csv_data}"
+        
+        try:
+            if self.is_gemini:
+                prompt = system_prompt + "\n\n" + user_content
+                response = self.gemini_model.generate_content(prompt)
+                text = response.text
+            else:
+                 response = await self.deepseek_client.chat.completions.create(
+                    model="deepseek-chat",
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_content}
+                    ],
+                    response_format={"type": "json_object"}
+                )
+                 text = response.choices[0].message.content
+            
+            return json.loads(text)
+        except Exception as e:
+            logger.error(f"AI Validation Error: {e}")
+            return {"is_confirmed": True, "confidence": 5, "comment": "AI error, skipping validation"}
+
 if __name__ == "__main__":
     print("Test run requires API Key and Data.")
